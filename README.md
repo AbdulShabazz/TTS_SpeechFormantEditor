@@ -6,7 +6,7 @@ The Artificial Speech Formant Editor is designed to facilitate the creation, man
 
 The editor includes an interactive viewer with color-coded combo/select dropdown boxes positioned on all four extents of the graph. This allows for precise control over the speech formant parameters and real-time visual feedback on how these parameters affect the speech synthesis.
 
-![Artificial Speech Formant Editor](../../../../IMG/Amplitude_vs_Frequency_vs_Time_Curve_UE.png)
+![Artificial Speech Formant Editor](IMG/Amplitude_vs_Frequency_vs_Time_Curve_UE.png)
 
 ## Project Structure
 
@@ -46,7 +46,7 @@ The project consists of the following files, each serving a distinct purpose wit
 
 To use the Artificial Speech Formant Editor:
 
-1. Open `index.html` in a web browser.
+1. Open `SpeechFormantEditor.html` in a web browser.
 2. Use the dropdown boxes to select the desired formant frequencies and amplitudes.
 3. Observe the changes in the graph as you adjust the formants.
 4. Utilize the visual feedback to understand the relationship between formants and speech sounds.
