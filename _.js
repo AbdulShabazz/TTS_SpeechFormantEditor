@@ -924,13 +924,13 @@ RemoveFramesBTN.addEventListener('click', function() {
 // Show/Hide JSON Text Area Element
 function showTAElement({ jsonINDIR = 'out' }={})
 {
-	popupContainer.style.display = 'flex';
 	switch (jsonINDIR) {
 		case 'in':
 		JsonTA.style.display = 'block';
 		json_form_class.style.display = 'block';
 		jsonFORM.style.display = 'inline-block';
 		jsonFORM.jsonIndirection = jsonINDIR;
+		waveform_container.style.display = 'none';
 		break;
 
 		case 'out':
@@ -938,12 +938,25 @@ function showTAElement({ jsonINDIR = 'out' }={})
 		json_form_class.style.display = 'block';
 		jsonFORM.style.display = 'none';
 		jsonFORM.jsonIndirection = jsonINDIR;
+		waveform_container.style.display = 'none';
 		break;
 
 		case 'slider':
 		slider_container.style.display = 'inline-block';
+		waveform_container.style.display = 'none';
+		JsonTA.style.display = 'none';
+		break;
+
+		case 'waveform':
+		JsonTA.style.display = 'none';
+		jsonFORM.style.display = 'none';
+		slider_container.style.display = 'none';
+		waveform_container.style.display = 'inline-block';
 		break;
 	}
+
+	// Show the popup container
+	popupContainer.style.display = 'flex';
 }
 
 // Show/Hide JSON Text Area Element
@@ -955,6 +968,7 @@ function hideTAElement()
 	jsonFORM.jsonIndirection = 'none';
 	JsonTA.style.display = 'none';
 	slider_container.style.display = 'none';
+	waveform_container.style.display = 'none';
 }
 
 CloseJsonBTN.addEventListener('click', function() {
@@ -1396,6 +1410,15 @@ function linear_spline_interpolation (pts,dt,audio_component)
 @brief Utility module for sinusoidal spline interpolation
 @details Utility module for sinusoidal spline interpolation  */
 const interpolationUtils = {
+
+    /**
+    @brief Ensures that there are enough points for interpolation.
+    @details Throws an exception if there aren't enough points for sinusoidal interpolation.
+             This is a static utility method used to validate the size of the points array
+             before performing interpolation operations.
+    @param pts Pointer to the first element of an array of FormantPoint.
+    @param idx The current index within the points array to check for sufficient subsequent points.
+    @throws std::runtime_error if there are not enough points for interpolation. 
 	ensureEnoughPoints: function(pts, idx) {
 		if (!(idx + 2 in pts)) {
 			throw new Error("runtime_error: Not enough inter-frame interpolation\
@@ -1403,25 +1426,117 @@ const interpolationUtils = {
 		}
 	},
 
+    /**
+    @brief Calculates the sinusoidal value based on amplitude, frequency, and time.
+    @details Uses the cosine function to calculate the sinusoidal value, representing
+             the value of the waveform at a given time based on its amplitude and frequency.
+    @param amp The amplitude of the waveform.
+    @param freq The frequency of the waveform.
+    @param ts The time stamp at which to calculate the waveform's value.
+    @return The calculated sinusoidal value. */
 	calculateSinusoidalValue: function(amp, freq, ts) {
 		return amp * Math.cos(Math.PI * (freq * ts));
 	},
 
+    /**
+    @brief Calculates the interpolation factor between two frames.
+    @details Determines the relative position of an intermediate frame within the interval
+             defined by a starting and ending frame.
+    @param frameStart The normalized start frame value.
+    @param frameEnd The normalized end frame value.
+    @param iframe The intermediate frame whose position is to be determined.
+    @return The interpolation factor of the intermediate frame within the start and end frame interval. */
 	getInterpolationFactor: function(frameStart, frameEnd, iframe) {
 		return Math.abs((iframe - frameStart) / (frameEnd - frameStart));
 	},
 
-	// Linear Interpolation (LERP) function
+    /**
+    @brief Performs linear interpolation (LERP) between two values.
+    @details Calculates a value linearly interpolated between a start and end value,
+             based on a given factor that indicates the relative position between the two.
+    @param start The start value for interpolation.
+    @param end The end value for interpolation.
+    @param factor The factor indicating the position between the start and end values.
+    @return The interpolated value. */
 	LERP: function(start, end, factor) {
 		return (1 - factor) * start + factor * end;
 	}
+
 };
 
+/**
+@brief Calculates the ratio of an intermediate frame between two frames.
+@details Determines the relative position of an intermediate frame within the intervals
+         defined by either the start to intermediate frame or the intermediate to end frame,
+         depending on the position of the intermediate frame.
+@param frameStart The start frame of the interval.
+@param intermediateFrame The intermediate frame whose ratio is to be calculated.
+@param frameEnd The end frame of the interval.
+@param iframe The frame to interpolate, normalized to the range [0.0, 1.0].
+@return The calculated ratio of the intermediate frame within the specified interval.*/
 function calculateRatioBetweenFrames(frameStart, intermediateFrame, frameEnd, iframe) {
 	return iframe >= intermediateFrame
 	? interpolationUtils.getInterpolationFactor(intermediateFrame, frameEnd, iframe)
 	: interpolationUtils.getInterpolationFactor(frameStart, intermediateFrame, iframe);
 }
+
+/*
+NOTES:
+
+The newly constructed sinusoidal interpolation algorithm developed here focuses on high fidelity 
+and precise control over the interpolation process, especially within the context of audio signal processing. 
+By carefully mapping interpolation points to specific quadrants of the cosine function's arc, 
+the algorithm aims to maintain the natural curvilinear properties of sinusoidal waves, 
+which is crucial for preserving the integrity of audio signals during interpolation. 
+Let's evaluate this approach in comparison to the current state-of-the-art in interpolation techniques:
+
+### 1. **Fidelity and Precision**
+
+The emphasis is on fidelity and precision in this algorithm, 
+especially through the use of piece-wise interpolation that respects the curvilinear properties 
+of sinusoidal functions, is a significant advantage for applications requiring high-quality audio signal processing. 
+This approach can potentially offer superior results in maintaining the natural characteristics of audio signals, 
+especially when compared to simpler linear interpolation methods.
+
+### 2. **Complexity and Computational Efficiency**
+
+While this algorithm offers high fidelity, it may also introduce increased computational complexity 
+due to the need for piece-wise calculations and potentially more complex logic 
+to determine the interpolation range for each segment. In contrast, state-of-the-art techniques 
+like spline or Bezier curve interpolations provide a good balance between computational efficiency and smoothness 
+of the interpolated signal. The choice between these methods often comes down to the specific requirements 
+of the application, including the acceptable trade-off between computational load and interpolation quality.
+
+### 3. **Flexibility and Applicability**
+
+The following algorithm's design to specifically leverage the properties 
+of sinusoidal functions makes it highly suited for audio signal processing, 
+where such waveforms are common. However, its applicability might be more limited in contexts where 
+the data does not inherently align with sinusoidal wave characteristics or when a broader range 
+of interpolation behaviors is desired. In contrast, more general interpolation techniques, 
+such as cubic splines or Bézier curves, are widely applicable across different domains 
+due to their flexibility in fitting a wide range of data patterns.
+
+### 4. **Ease of Implementation and Integration**
+
+Implementing and integrating this algorithm into existing systems may require careful consideration, 
+especially if the system was designed around more conventional interpolation methods. 
+The specific nature of your algorithm's calculations might necessitate adjustments 
+in data preprocessing or postprocessing stages. On the other hand, 
+widely used techniques like cubic splines are often supported by existing libraries and tools, 
+facilitating easier integration.
+
+### Conclusion
+
+This sinusoidal interpolation algorithm presents a novel approach with potential advantages in 
+audio signal processing applications, emphasizing fidelity and precision. However, 
+it's essential to weigh these benefits against the increased computational complexity 
+and the specific applicability to sinusoidal waveforms. As with any specialized technique, 
+the ultimate evaluation would benefit from empirical testing within its intended application context, 
+comparing its performance directly against other state-of-the-art interpolation methods in terms of both 
+qualitative and quantitative outcomes.
+
+*/
 
 /**
 @brief Sine interpolation function.
@@ -1432,8 +1547,9 @@ function calculateRatioBetweenFrames(frameStart, intermediateFrame, frameEnd, if
 @param amp  The amplitude of the oscillator signal.
 @param freq  The frequency of the oscillator signal.
 @param audio_component  The audio component to interpolate (eg. 'amplitude' or 'frequency'). 
-@returns p_result: The oscillator signal at frame (frame) */
+@return p_result: The oscillator signal at frame (frame) */
 function sinusoidal_spline_interpolation(pts, idx, iframe, amp, freq, audio_component) {
+
 	interpolationUtils.ensureEnoughPoints(pts, idx);
 
 	let retval = 0;
@@ -2160,9 +2276,239 @@ AudioBTN.addEventListener('click', function() {
 	const audio_frames = generateComplexSignal(Formants, null);
 });
 
+// Create a new CurveViewer chart instance
+var chart_viewer_config = {
+	type: 'line',
+	data: {
+		datasets: [{
+			label: 'Left Channel',
+			data: [0].map((chart_amplitude/* item */, chart_frame /* idx*/) => ({y:chart_amplitude, x:chart_frame})),
+			borderColor: 'blue',
+			backgroundColor: 'rgb(0, 0, 255)',
+			yAxisID: 'y-axis-amplitude-L',
+			xAxisID: 'x-axis-frame',
+			showLine: false, // Prevents drawing the line
+		}, {
+			label: 'Right Channel',
+			data: [0].map((chart_amplitude/* item */, chart_frame /* idx*/) => ({y:chart_amplitude, x:chart_frame})),
+			borderColor: 'green',
+			backgroundColor: 'rgb(0, 140, 0)',
+			yAxisID: 'y-axis-amplitude-R',
+			xAxisID: 'x-axis-frame-dupl',
+			showLine: false, // Prevents drawing the line
+		}]
+	},
+	options: {
+		scales: {
+			'y-axis-amplitude-L': {
+				type: 'linear',
+				title: { 
+					text: 'dBFS ( Decibels relative to Full Scale )',
+					display: true,
+				},
+				display: true,
+				position: 'left',
+				grid: {
+					drawOnChartArea: true
+				},
+				ticks: {
+					// Include a UNITS placeholder in the ticks
+					callback: function(value, index, ticks) {
+						// call the default formatter, forwarding `this`
+						return Chart.Ticks.formatters.numeric.apply(this, [value, index, ticks]) + ' dBFS';
+					}
+				}
+			},
+			'y-axis-amplitude-R': {
+				type: 'linear',
+				title: { 
+					text: 'dBFS ( Decibels relative to Full Scale )',
+					display: true,
+				},
+				display: true,
+				position: 'right',
+				grid: {
+					drawOnChartArea: false
+				},
+				ticks: {
+					// Include a UNITS placeholder in the ticks
+					callback: function(value, index, ticks) {
+						// call the default formatter, forwarding `this`
+						return Chart.Ticks.formatters.numeric.apply(this, [value, index, ticks]) + ' dBFS';
+					}
+				}
+			},
+			'x-axis-frame': {
+				type: 'linear',
+				title: { 
+					text: 'Audio Sample ( Frame ) ',
+					display: true,
+				},
+				display: true,
+				position: 'bottom',
+				grid: {
+					drawOnChartArea: false
+				},
+				ticks: {
+					// Include a dollar sign in the ticks
+					callback: function(value, index, ticks) {
+						// call the default formatter, forwarding `this`
+						return Chart.Ticks.formatters.numeric.apply(this, [value, index, ticks]);
+					}
+				}
+			},
+			'x-axis-frame-dupl': {
+				type: 'linear',
+				title: { 
+					text: 'Audio Sample ( Frame ) ',
+					display: true,
+				},
+				display: true,
+				position: 'top',
+				grid: {
+					drawOnChartArea: false
+				},
+				ticks: {
+					// Include a dollar sign in the ticks
+					callback: function(value, index, ticks) {
+						// call the default formatter, forwarding `this`
+						return Chart.Ticks.formatters.numeric.apply(this, [value, index, ticks]);
+					}
+				}
+			}
+		},
+		responsive: true, // Makes the chart responsive to window resizing
+        animation: false, // Disable chart animations ( performance)
+		maintainAspectRatio: true, // Maintain aspect ratio
+		plugins: {
+			legend: {
+				labels: {
+					fontSize: 14 // Legend font size
+				}
+			},
+			tooltip: {
+				// Enable custom tooltips
+				enabled: true,
+				mode: 'index',
+				position: 'nearest',
+				bodyFontSize: 12, // Tooltip font size
+				callbacks: {
+					title: function(tooltips, data) {
+						// Assuming the first dataset is for amplitude and has complete frame and time_step data
+						const tt = tooltips[0];
+						//const tt2 = tooltips[1];
+						//const tmpTimeStep = tt.label;
+						const tmpFrame = tt.label;
+						//const tmpFrame = tt2.label;
+						/*
+						const tmpAmplitude = tt.formattedValue;
+						const tmpfrequency = tt2.formattedValue;
+						*/
+						return `Frame: ${tmpFrame}`;
+					},
+					label: function(tooltipItem, data) {
+						// tooltipItem is an object containing properties of the tooltip
+						// data is an object containing all data passed to the chart
+						let yLabel = tooltipItem.formattedValue;
+						const xLabel = tooltipItem.dataset.label;
+						if (xLabel.match(/^Left/)) {
+							yLabel = `Amplitude: ${yLabel} dBFS`;
+						} else if (xLabel.match(/^Right/)) {
+							yLabel = `Amplitude: ${yLabel} dBFS`;
+						}
+						return yLabel;
+					}
+				}
+			},
+		},
+	}
+};
+
+//waveform_viewer_canvas.style.width = "600px";
+//waveform_viewer_canvas.style.height  = "200px";
+
 Cpp20BTN.addEventListener('click', function() {
-	OutJsonBTN.click();
+
+	// Bard: Here's the JavaScript code to generate a sinusoidal audio wveform of 1s duration at PCM 24 bit/48 kHz sampling:
+
+	// Define desired .WAV audio parameters 
+	// (largest PCM decode: PCM 768000 Hz @ 32-bit)
+	// (largest Javascript PCM encoded file playback: PCM 192000 Hz @ 32-bit)
+	const sampleRate = 192000; // Unlimited Rate supported, though Javascript supports up to PCM 384000 Hz Max decodable @ 32-bit
+	const bitsPerSample = 32; // 32-bit MAX
+	const frequency = 440; // Hz (Tone A4)
+	const duration = 1; // 1 second
+	const amplitude = 0.4; // 0.5 for a comfortable volume
+
+	const I = Math.min(25000, duration * sampleRate);
+
+	// Create an audio buffer with appropriate settings
+	let channelDataLeft = new Float64Array (I);
+	let channelDataRight = new Float64Array (I);
+
+	channelDataLeft.sampleRate = sampleRate;
+	channelDataLeft.bitsPerSample = bitsPerSample;
+
+	channelDataRight.sampleRate = sampleRate;
+	channelDataRight.bitsPerSample = bitsPerSample;
+
+	// Generate the sine wave data
+	//const maxInt24 = Math.pow(2, bitsPerSample - 1) - 1; // 2^23 - 1 = 8_388_607; preserve the sign bit
+	for (let i = 0; i < I; ++i) {
+		const time = i / sampleRate; // returns a value between 0 and 1
+		const value = Math.sin(2 * Math.PI * frequency * time) * amplitude;
+
+		// Ensure the value is positive for dBFS conversion
+		const absValue = Math.abs(value);
+
+		// Convert to dBFS and consider the case when absValue is 0
+		//const dBFS = absValue > 0 ? 20 * Math.log10(absValue) : -Infinity;
+
+		const nsample = value; //value * maxInt24; // Scale for eg. 24-bit audio
+
+		channelDataLeft[i] = nsample;
+		channelDataRight[i] = (i > 0) ? channelDataLeft[i-1] : 0;  // offset channel samples by 1 for a perceived stereo signal
+	}
+
+	showOverlayWithData( [
+		Array.from(channelDataLeft, (chart_amplitude/* item */, chart_frame /* idx*/) => ({ y:chart_amplitude, x:chart_frame }))
+		, Array.from(channelDataRight, (chart_amplitude/* item */, chart_frame /* idx*/) => ({ y:chart_amplitude, x:chart_frame }))] );
+
 });
+
+function showOverlayWithData(data) {
+	var ctx = document.getElementById('waveform_viewer_canvas').getContext('2d');
+
+	// Check if the chart instance already exists
+	if (!window.overlayChart) {
+		// Initialize the chart if it doesn't exist
+		window.overlayChart = new Chart(ctx, chart_viewer_config);
+	}
+
+	const leftChannelData = 0;
+	const rightChannelData = 1;
+
+	window.overlayChart.data.datasets[leftChannelData].data = data[leftChannelData]; // Update L-Channel data
+	window.overlayChart.data.datasets[rightChannelData].data = data[rightChannelData]; // Update R-Channel data
+
+	waveform_viewer_canvas.style.width = '1200px'; // Show the overlay
+	waveform_viewer_canvas.style.height = '1000px'; // Show the overlay
+
+	window.overlayChart.update(); // Update the chart
+
+	popupContainer.style.display = 'block'; // Show the overlay
+	json_form_class.style.display = 'block'; // Hide the overlay
+
+	JsonTA.style.display = 'none';
+	jsonFORM.style.display = 'none';
+	slider_container.style.display = 'none';
+}
+
+function closeOverlay() {
+	popupContainer.style.display = 'none'; // Show the overlay
+	json_form_class.style.display = 'none'; // Hide the overlay
+	waveform_container.style.display = 'none'; // Show the overlay
+}
 
 okBTN.addEventListener('click', function(e) {
 	e.preventDefault();
