@@ -8,6 +8,8 @@ The editor includes an interactive viewer with color-coded combo/select dropdown
 
 ![Artificial Speech Formant Editor](IMG/Amplitude_vs_Frequency_vs_Time_Curve_UE.png)
 
+![Artificial Speech Formant Curve](IMG/FormantEditor_Firefox_PCM32Bit_384kHz_40Hz_downto_5Hz_Amplitude_1_to_2_Ramp_Curve.png)
+
 ## Project Structure
 
 The project consists of the following files, each serving a distinct purpose within the application:
@@ -46,7 +48,7 @@ The project consists of the following files, each serving a distinct purpose wit
 
 To use the Artificial Speech Formant Editor:
 
-1. Open `SpeechFormantEditor.html` in a web browser.
+1. Open `index.html` in a web browser.
 2. Use the dropdown boxes to select the desired formant frequencies and amplitudes.
 3. Observe the changes in the graph as you adjust the formants.
 4. Utilize the visual feedback to understand the relationship between formants and speech sounds.
