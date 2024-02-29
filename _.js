@@ -165,6 +165,10 @@ Formants[0].push(
 	new OSC_INTERVAL ({ amplitude: -11.0, frequency: 20.0, frame: 2000, time_step: 105 })
 );
 
+Formants.prototype = Object.create(Array.prototype);
+Formants.prototype.undoStack = [];
+Formants.prototype.redoStack = [];
+
 g_config = {
 	type: 'line',
 	data: {
@@ -311,7 +315,9 @@ formant_graph_canvas = document.getElementById('formant-graph');
 formant_graph_canvas.addEventListener('mousemove', updateCrossHair);
 
 const ctx = formant_graph_canvas.getContext('2d');
+
 g_formantChart = new Chart(ctx, g_config);
+
 g_formantChart.yAxisAmplitudeVisibleFlag = true;
 
 function createSlider(id, label, value, min, max, step, callback) {
@@ -359,24 +365,26 @@ function createSlider(id, label, value, min, max, step, callback) {
 }
 
 function getMaxFrame(i, formant) {
+	// TODO: Implement logic to determine the maximum frame allowed based on adjacent points
 	// Implement logic to determine the maximum frequency allowed based on adjacent points
 	// Placeholder return value
 	return formant[i + 1].frame;
 }
 
 function getMaxFrequency(i, formant) {
+	// TODO: Implement logic to determine the maximum frequency allowed based on adjacent points
 	// Implement logic to determine the maximum frequency allowed based on adjacent points
 	// Placeholder return value
 	return 500.00;
 }
 
 function getMaxAmplitude(i, formant) {
-	// Implement logic to determine the maximum amplitude allowed based on adjacent points
+	// TODO :Implement logic to determine the maximum amplitude allowed based on adjacent points
 	// Placeholder return value
 	return 0.00;
 }
 
-// Function to find and remove the nearest element
+// Function to find and remove the nearest element //
 function removeNearest(audio_frame, remove_element) {
 	let nearestAudioFrameIndex  = 0;
 	let nearestValue = audio_frame[0];
@@ -405,7 +413,7 @@ function removeDatapoint(audio_frame, remove_element) {
 	// Remove the data point from the chart //
 	let chart = g_formantChart;
 	if (chart.crosshair) {
-		// Prevent the crosshair from inserting new points outside the plot area
+		// Prevent the crosshair from inserting new points outside the plot area! //
 		const chartArea = chart.chartArea;
 		const minX = chartArea.left;
 		const maxX = chartArea.right;
@@ -429,16 +437,16 @@ function removeDatapoint(audio_frame, remove_element) {
 }
 
 function displaySliders(i, formant) {
-	// Reference to the container where sliders will be added
+	// Reference to the container where sliders will be added //
 	var container = slider_container;
 
-	// Clear previous sliders
+	// Clear previous sliders //
 	container.innerHTML = '';
 
 	const minFrame = i - 1 in formant ? formant[i-1].frame : formant[i].frame;
 	const maxFrame = i + 1 in formant ? formant[i+1].frame : formant[i].frame;
 
-	// Create a slider for the frame index
+	// Create a slider for the frame index //
 	var frameIndexSlider = createSlider('frameIndex'
 		, 'Adjust Frame Index'
 		, formant[i].frame
@@ -446,7 +454,7 @@ function displaySliders(i, formant) {
 		, maxFrame
 		, "1"
 		, function(value) {
-			// Update the chart data and re-render
+			// Update the chart data and re-render //
 			let formant = Formants[g_lastSelectedFormantIndex];
 			formant[i].frame = value;
 			updateChart(formant);
@@ -1769,15 +1777,27 @@ function has_shape(a,b)
 @param shapes_oscilatorParamsVec: The complex wave-shapes to develop (ie. Formants[]).
 @param customUpdateCallback: An (optional) lambda that can be used to update the oscillator parameters, instead.
 @return The oscillator signal at frame N).*/
-function generateComplexSignal(shapes_oscilatorParamsVec
-	, customUpdateCallback) {
+function generateComplexSignal(
+	  shapes_oscilatorParamsVec
+	, customUpdateCallback)
+{
 
+	let idx = 0;
 	let frame_idx = 0;
 	let waveform = new FWaveform();
 	let audioFrames_float64Vec = [];
+	const pcm_encoding = shapes_oscilatorParamsVec.pcm_encoding;
+	const hz_pcm_encoding = pcm_encoding_docstring_options[pcm_encoding].sample_rate * 1000;
+	const bit_depth_pcm_encoding = pcm_encoding_docstring_options[pcm_encoding].bit_depth;
+	const amplitude_pcm_encoding_dynamic_range = Math.pow(2, bit_depth_pcm_encoding - 1) - 1;
 
 	for (const shape_oscillatorParams of shapes_oscilatorParamsVec) {
-		let outShape = 0;
+
+		// Ensure that the index is within the bounds of the shapes_oscilatorParamsVec array
+		if (idx >= shapes_oscilatorParamsVec.length)
+			break;
+		
+			let outShape = 0;
 
 		// Custom updates using lambda
 		if (customUpdateCallback) {
@@ -1787,112 +1807,151 @@ function generateComplexSignal(shapes_oscilatorParamsVec
 				outShape);
 		} else {
 			const FRAME_IDX = shape_oscillatorParams.frame + 1;
+			const t = frame_idx / FRAME_IDX;
+			const hz_start = shape_oscillatorParams.frequency;
+			const db_start = shape_oscillatorParams.amplitude;
+			const hz_end = shapes_oscilatorParamsVec[idx + 1].frequency;
+			const db_end = shapes_oscilatorParamsVec[idx + 1].amplitude;
+			
 			while(frame_idx < FRAME_IDX)
 			{
-				const startingShape = outShape;
-				/*
-				const hz = bezier_spline_interpolation(shape_oscillatorParams, frame_idx, "frequency");
-				const db = bezier_spline_interpolation(shape_oscillatorParams, frame_idx, "amplitude");
-				const hz = sinusoidal_spline_interpolation(shape_oscillatorParams, frame_idx, "frequency");
-				const db = sinusoidal_spline_interpolation(shape_oscillatorParams, frame_idx, "amplitude");*/
-				const hz = linear_spline_interpolation(shape_oscillatorParams, frame_idx, "frequency");
-				const db = linear_spline_interpolation(shape_oscillatorParams, frame_idx, "amplitude");
+				const nullShape = outShape;
 
-				if (has_shape(shape_oscillatorParams.shape
+				const hz_stepRatio = linearStep(t, hz_start, hz_end);
+				const db_stepRatio = linearStep(t, db_start, db_end);
+				
+				const hz = 1 / hz_pcm_encoding * shapes_oscilatorParamsVec.frequency_as_bezierCurve_flag 
+				? quarticEaseInOut(hz_stepRatio, hz_start, hz_end)
+				: LERP(hz_stepRatio, hz_start, hz_end);
+				
+				const db = shapes_oscilatorParamsVec.frequency_as_bezierCurve_flag 
+				? quarticEaseInOut(hz_stepRatio, db_start, db_end)
+				: LERP(db_stepRatio, db_start, db_end);
+
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.Sine_enum))
-					outShape += waveform.sine(db
+					outShape += waveform.sine(
+						  db
 						, hz
 						, frame_idx
 						, shape_oscillatorParams.theta); 
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.Cosine_enum))
-					outShape += waveform.cosine(db
+					outShape += waveform.cosine(
+						  db
 						, hz
 						, frame_idx
 						, shape_oscillatorParams.theta);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.QuarterSine_enum))
-					outShape += waveform.quarterSine(db
+					outShape += waveform.quarterSine(
+						  db
 						, hz
 						, frame_idx
 						, shape_oscillatorParams.theta);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.HalfSine_enum))
-					outShape += waveform.halfSine(db
+					outShape += waveform.halfSine(
+						  db
 						, hz
 						, frame_idx
 						, shape_oscillatorParams.theta);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.Triangle_enum))
-					outShape += waveform.Triangle(db
+					outShape += waveform.Triangle(
+						  db
 						, hz
 						, frame_idx);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.Square_enum))
-					outShape += waveform.Square(db
+					outShape += waveform.Square(
+						  db
 						, hz
 						, frame_idx);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.ForwardSawtooth_enum))
-					outShape += waveform.forwardSaw(db
+					outShape += waveform.forwardSaw(
+						  db
 						, hz
 						, frame_idx);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.ReverseSawtooth_enum))
-					outShape += waveform.ReverseSaw(db
+					outShape += waveform.ReverseSaw(
+						  db
 						, hz
 						, frame_idx);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.WhiteNoise_enum))
 					outShape += waveform.whiteNoise(db);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.BrownNoise_enum))
-					outShape += waveform.brownNoise(db
+					outShape += waveform.brownNoise(
+						  db
 						, hz
 						, frame_idx);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.PinkNoise_enum))
-					outShape += waveform.pinkNoise(db
+					outShape += waveform.pinkNoise(
+						  db
 						, hz
 						, frame_idx);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.YellowNoise_enum))
-					outShape += waveform.yellowNoise(db
+					outShape += waveform.yellowNoise(
+						  db
 						, hz
 						, frame_idx);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.BlueNoise_enum))
-					outShape += waveform.blueNoise(db
+					outShape += waveform.blueNoise(
+						  db
 						, hz
 						, frame_idx);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.GreyNoise_enum))
-					outShape += waveform.greyNoise(db
+					outShape += waveform.greyNoise(
+						  db
 						, hz
 						, frame_idx);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.WhiteGaussianNoise_enum))
 					outShape += waveform.whiteGaussianNoise(db);
 
-				if (has_shape(shape_oscillatorParams.shape
+				if (has_shape(
+					  shape_oscillatorParams.shape
 					, WaveShape.PurpleVioletNoise_enum))
 					outShape += waveform.purpleVioletNoise();
 
-				if (outShape == startingShape)
+				if (outShape == nullShape)
 					throw ("invalid_argument to WaveShape generator - Unexpected or Unknown WaveShape type.");
 					//console.error(`Error at audio frame ${frame_idx} - Unknown or Unexpected wave-shape: ${shape_oscillatorParams.shape}`);
 					//throw std::invalid_argument("Unexpected or Unknown wave-shape.");
@@ -1901,6 +1960,7 @@ function generateComplexSignal(shapes_oscilatorParamsVec
 		} // End of else statement
 
 		audioFrames_float64Vec.push(outShape);
+		++idx;
 	} // End of for loop
 
 	return audioFrames_float64Vec;
@@ -2515,6 +2575,121 @@ function closeOverlay() {
 	waveform_container.style.display = 'none'; // Show the overlay
 }
 
+/**
+	// Example Usage for linearStep ratio //
+	// smoothly interpolated value between 0 and 1. //
+
+	value = linearStep(x, min, max);
+*/
+
+/**
+ * Calculates a smooth transition between 0 and 1 using a linear interpolation.
+ * This function can be used to apply linear effects to your values.
+ * 
+ * @brief Usage example for linear
+ * @param {number} x - The input value for which to calculate the smoothstep, typically time or a normalized parameter.
+ * @param {number} min - The lower bound of the input range.
+ * @param {number} max - The upper bound of the input range.
+ * @returns {number} - The smoothly interpolated stepRatio between 0 and 1. */
+function linearStep(x, min, max)
+{
+    if (x <= min) return 0;
+    if (x >= max) return 1;
+    const stepRatio = (x - min) / (max - min);
+    return stepRatio;
+}
+
+/**
+ * Performs quartic ease-in interpolation.
+ * Starts with a slow acceleration and then speeds up.
+ * @param {number} t - The interpolation factor, between 0.0 (start) and 1.0 (end).
+ * @returns {number} The interpolated value at the factor t, assuming start value is 0 and end value is 1. */
+function quarticEaseIn(t) {
+    return t * t * t * t;
+}
+
+/**
+ * Performs quartic ease-out interpolation.
+ * Starts fast and decelerates to a stop.
+ * @param {number} t - The interpolation factor, between 0.0 (start) and 1.0 (end).
+ * @returns {number} The interpolated value at the factor t, assuming start value is 0 and end value is 1. */
+function quarticEaseOut(t) {
+    return 1 - (--t) * t * t * t;
+}
+
+/*
+	// Example usage for quarticEaseInOut
+	const double ii = 0; // Starting value //
+	const double II = 100;   // Ending value //
+
+	std::cout << "[ ";
+
+	for(double i = ii; i < II; i += 0.01)
+	{
+		const double stepRatio = linearStep(i,ii,II); // Current time as a normalized between [0, 1] //
+		
+		const double interpolatedValue = quarticEaseInOut(stepRatio, ii, II);
+		
+		std::cout << interpolatedValue << ", ";
+	}
+
+	std::cout << " ]";
+*/
+
+/**
+ * Combines quartic ease-in and ease-out into a single function.
+ * Accelerates from start and decelerates to stop.
+ * @param {number} startValue - The starting value of the parameter to interpolate.
+ * @param {number} endValue - The ending value of the parameter to interpolate.
+ * @param {number} t - The interpolation factor, between 0.0 (start) and 1.0 (end).
+ * @returns {number} The interpolated value. */
+function quarticEaseInOut(startValue, endValue, t) {
+    t = Math.max(0, Math.min(1, t)); // Clamp t to the range [0, 1] //
+    if (t < 0.5) {
+        return startValue + (endValue - startValue) * 8 * t * t * t * t;
+    } else {
+        t = t - 1;
+        return startValue + (endValue - startValue) * (1 - 8 * t * t * t * t);
+    }
+}
+
+/**
+	Example usage for cubicHermite
+ 
+	// Example usage //
+	const double ii = 0; // Starting value //
+	const double II = 100;   // Ending value //
+
+	std::cout << "[ ";
+
+	for(double i = ii; i < II; i += 0.01)
+	{
+		const double stepRatio = linearStep(i,ii,II); // Current time as a normalized between [0, 1] //
+		
+		const double interpolatedValue = cubicHermite(stepRatio, ii, II, 0.0, 0.0);
+		
+		std::cout << interpolatedValue << ", ";
+	}
+
+	std::cout << " ]";
+ */
+
+	/**
+ * Performs cubic Hermite interpolation between two values bound within an interval.
+ * 
+ * @param {number} t - The interpolation factor, ranging from 0.0 (start) to 1.0 (end).
+ * @param {number} p0 - The starting value of the interpolation (at t=0).
+ * @param {number} p1 - The ending value of the interpolation (at t=1).
+ * @param {number} m0 - The tangent (slope) at the starting point.
+ * @param {number} m1 - The tangent (slope) at the ending point.
+ * @returns {number} - The interpolated value. */
+function cubicHermite(t, p0, p1, m0, m1)
+{
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * p0 + (t3 - 2 * t2 + t) * m0 + (-2 * t3 + 3 * t2) * p1 + (t3 - t2) * m1;
+}
+
 okBTN.addEventListener('click', function(e) {
 	e.preventDefault();
 	try {
@@ -2526,11 +2701,10 @@ okBTN.addEventListener('click', function(e) {
 				break;
 			case 'out':
 			case 'none':
-			default:
-				break;
+			default: break;
 		}
-	} catch (err) {
-		console.info(err);
+	} catch (e) {
+		console.info(e);
 	}
 });
 
@@ -2557,7 +2731,8 @@ function updateProgress(progress) {
 		setTimeout(function() {
 			progressBar.style.display = 'none';
 		}, 500); // 500 milliseconds = 0.5 seconds
-	} else if (progress > 0 
+	} else if (
+		progress > 0 
 		&& progressBar.style.display != 'block') {
 			progressBar.style.display = 'block';
 	}
@@ -2576,14 +2751,35 @@ frequencyBtn.addEventListener('click', function() {
 });
 
 window.addEventListener('keydown', function(e) {
-	// Close popup on escape key press
-	if (e.key === 'Escape') {
+	// Close popup on escape key press //
+	if (e.key === 'Escape')
+	{
 		closeOverlay();
-	}
+	} 
+	else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z')
+	{
+        e.preventDefault(); // Prevent the default undo behavior
+        // Ctrl + Shift + Z for redo in some applications and Firefox
+        if (e.shiftKey) {
+           // console.log('Ctrl + Shift + Z pressed');
+            //redo();
+        } else {
+            //console.log('Ctrl + Z pressed');
+            //undo();
+        }
+    }
+	// Check if Ctrl (or Cmd on Mac!) is pressed along with Y
+	// Note: Firefox might not use 'y' for redo, relying on Ctrl + Shift + Z instead.
+	else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y')
+	{
+        e.preventDefault(); // Prevent the default redo behavior
+        //console.log('Ctrl + Y pressed');
+        //redo();
+    }
 });
 
 window.addEventListener('resize', () => {
-	// Update the chart
+	// Update the chart //
 	g_formantChart.resize();
 });
 
