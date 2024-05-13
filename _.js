@@ -2174,7 +2174,7 @@ function generateComplexSignal(
 			const to = me[i+1];
 	
 			const start_frame_idx = from.frame;
-			const end_frame_idx = to.frame;
+			const end_frame_idx = to.frame - 1;
 			const db_start = from.amplitude > dBFS_Saturation_Minimum ? from.amplitude : -Infinity; // amplitude < dBFS_Saturation_Minimum ? (Audio Silence) //
 			const db_end = to.amplitude > dBFS_Saturation_Minimum ? to.amplitude : -Infinity; // amplitude < dBFS_Saturation_Minimum ? (Audio Silence) //
 			const hz_start = from.frequency;
@@ -2201,7 +2201,7 @@ function generateComplexSignal(
 
 			// frame interval targets //
 			let t = from.frame;
-			const FRAME_IDX = to.frame + 1;
+			const FRAME_IDX = to.frame;
 
 			while(t < FRAME_IDX){
 
