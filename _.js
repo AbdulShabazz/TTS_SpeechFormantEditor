@@ -2235,7 +2235,7 @@ function generateComplexSignal(
 				
 				**/
 
-				if (params.isPhaseSensitive) {
+				if (shape_oscillatorParams.isPhaseSensitive) {
 					// 1. Track the cumulative phase of the signal over time. //
 					const oldFrequency = params.frequency;
 					
@@ -2246,7 +2246,7 @@ function generateComplexSignal(
 					? smoothInterpolationMethod(hz_stepRatio, hz_start, hz_end)
 					: defaultInterpolationMethod(hz_stepRatio, hz_start, hz_end) ;
 
-				if (params.isPhaseSensitive) {
+				if (shape_oscillatorParams.isPhaseSensitive) {
 					// 2. Adjust phase to match the instantaneous phase at the time of frequency change //
 					params.phase = params.cumulativePhase - 2 * Math.PI * params.frequency / params.TIME * (params.time + params.deltaTime);
 				}
